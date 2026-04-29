@@ -82,6 +82,7 @@ for runn in range(0,6):
     individual = 'False' # if true then wsi1-wsi2, etc... false wsi-others
     plot_weights='True'
     dataset= 'lung' #'cptac' "lung
+    task = '12months'  # '12months' (classification) or 'risk' (Cox PH survival)
                                                                                                 #CPTAC           #LUNG
     all_t= 'baseline_lda_all_files' #combined_5_all_files                                     #yes   yes         #YES
                            #combined_20_all_files                                                  #yes   yes         #YES
@@ -688,6 +689,15 @@ for runn in range(0,6):
         df = pd.concat([df_train, df_val], ignore_index=True)
         #num_folds = 0
 
+    if task == 'risk':
+        if 'demographic.days_to_death' not in df.columns:
+            raise ValueError("task='risk' requires column 'demographic.days_to_death' in the metadata CSV.")
+        df['event'] = df['demographic.days_to_death'].notna().astype(int)
+        t_censor = df['demographic.days_to_death'].max()
+        if pd.isna(t_censor):
+            raise ValueError("task='risk' could not compute censoring time: all demographic.days_to_death values are NaN.")
+        df['time'] = df['demographic.days_to_death'].fillna(t_censor).astype(float)
+
     # Initialize StratifiedKFold and dataset statistics
     skf = StratifiedKFold(n_splits=num_folds, shuffle=True, random_state=seed)
     #mean_features, std_dev = compute_mean_std(df_train, "/home/ritav/Graphs/cptac_233_adj_selfloop", device)
@@ -714,7 +724,7 @@ for runn in range(0,6):
     #print('\nunique patients',unique_patients)
     print('\ntotal unique_patients',len(unique_patients))
     # Get labels for each unique patient
-    labels = df.groupby('case_id')['vital_status_12'].first()
+    labels = df.groupby('case_id')['vital_status_12'].first() if task == '12months' else df.groupby('case_id')['event'].first()
 
     if 'all_files' not in all_t:
         num_folds = 0
@@ -903,7 +913,7 @@ for runn in range(0,6):
 
                 if norm=='True':
                     # Data loaders
-                    train_loader, val_loader, test_loader, train_dataset, val_dataset, test_dataset,num_neighbors,node_batch_size, = setup_data_loaders(all_t,train_df, val_df, test_df, mean_features, std_dev, batch_sizee, device,sampller,survival,node_batch_size,virtual_percentage,individual,dataset, patch_selector=patch_selector)
+                    train_loader, val_loader, test_loader, train_dataset, val_dataset, test_dataset,num_neighbors,node_batch_size, = setup_data_loaders(all_t,train_df, val_df, test_df, mean_features, std_dev, batch_sizee, device,sampller,survival,node_batch_size,virtual_percentage,individual,dataset, patch_selector=patch_selector, task=task)
                     print(train_loader)
                     print(val_loader)
                     print(test_loader)
@@ -1066,12 +1076,12 @@ for runn in range(0,6):
 
                 total_samples_calc = train_dataset.n_pos + train_dataset.n_neg # 1972.0
                 weight_pos = torch.tensor(weight_pos).to(device)
-                criterion = torch.nn.BCEWithLogitsLoss(reduction='sum',pos_weight=weight_pos)
+                criterion = torch.nn.BCEWithLogitsLoss(reduction='sum',pos_weight=weight_pos) if task == '12months' else None
 
                 fold_result = train_accum_graddient_new_sigmoid_threshold(
                 train_loader, val_loader, model, criterion, optimizer, device, early_stopping_rounds,
                 lr_scheduler_patience, lr_scheduler_factor, writer, best_model_path, weight_tensor,num_epochs, hidden_channels,lr,num_node_features,class_weights, best_val_acc,best_score_matrix_v,best_cm_v,best_score_matrix_t, best_cm,fold,
-                lrrr, effective_batch // batch_sizee, load, survival, all_t, actualtime, effective_batch,calculate_threshold,track,track_lr ,repeat,num_neighbors,node_batch_size,batch_sizee,dataset
+                lrrr, effective_batch // batch_sizee, load, survival, all_t, actualtime, effective_batch,calculate_threshold,track,track_lr ,repeat,num_neighbors,node_batch_size,batch_sizee,dataset, task=task
             )
 
 
