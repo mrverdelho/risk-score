@@ -4173,6 +4173,64 @@ def cox_ph_loss(risk, time, event):
     denom = event.sum().clamp_min(1.0)
     return (-(risk - log_cumsum) * event).sum() / denom
 
+def concordance_index_torch(time, risk, event):
+    time = time.detach().view(-1).float().cpu()
+    risk = risk.detach().view(-1).float().cpu()
+    event = event.detach().view(-1).float().cpu()
+    n = len(time)
+    concordant = 0.0
+    ties = 0.0
+    comparable = 0.0
+    for i in range(n):
+        if event[i] <= 0:
+            continue
+        for j in range(n):
+            if time[i] < time[j]:
+                comparable += 1.0
+                if risk[i] > risk[j]:
+                    concordant += 1.0
+                elif risk[i] == risk[j]:
+                    ties += 1.0
+    if comparable == 0:
+        return 0.5
+    return float((concordant + 0.5 * ties) / comparable)
+
+def validate_risk(loader, model, device, survival, all_t):
+    model.eval()
+    all_time, all_event, all_risk = [], [], []
+    total_loss = 0.0
+    n_batches = 0
+    with torch.no_grad():
+        for data in loader:
+            data = data.to(device)
+            if isinstance(data, HeteroData):
+                if survival == 'gat':
+                    out, _ = model(data.x_dict, data.edge_index_dict, data['tile'].batch)
+                else:
+                    out = model(data.x_dict, data.edge_index_dict, data['tile'].batch)
+            elif 'hyper' in all_t:
+                out = model(data.x, data.edge_index, data.hyperedge_index, data.batch)
+            else:
+                if survival == 'gat' and 'hyper' not in all_t:
+                    out, _ = model(data.x, data.edge_index, data.batch)
+                else:
+                    out = model(data.x, data.edge_index, data.batch)
+            risk = out.view(-1)
+            time = data.time.view(-1).float()
+            event = data.event.view(-1).float()
+            total_loss += cox_ph_loss(risk, time, event).item()
+            n_batches += 1
+            all_time.append(time)
+            all_event.append(event)
+            all_risk.append(risk)
+    if n_batches == 0:
+        return 0.0, 0.5
+    times = torch.cat(all_time)
+    events = torch.cat(all_event)
+    risks = torch.cat(all_risk)
+    c_index = concordance_index_torch(times, risks, events)
+    return total_loss / n_batches, c_index
+
 
     
 def train_accum_graddient_new_sigmoid_threshold(train_loader, val_loader, model, criterion, optimizer, device, early_stopping_rounds,
@@ -4378,13 +4436,17 @@ def train_accum_graddient_new_sigmoid_threshold(train_loader, val_loader, model,
 
         # Validation loop
         if task == 'risk':
-            avg_loss_val = train_loss
-            val_acc = val_bacc = train_accuracy = train_bacc = 0.0
+            avg_loss_val, c_index_val = validate_risk(val_loader, model, device, survival, all_t)
+            avg_loss_train, c_index_train = validate_risk(train_loader, model, device, survival, all_t)
+            val_acc = val_bacc = c_index_val
+            train_accuracy = train_bacc = c_index_train
             score_matrix_v = cm_v = score_matrix_t = cm_t = None
             majority_voting_predictions = class_report_majority_voting = conf_matrix_majority_voting = None
             one_dominance_predictions = class_report_one_dominance = conf_matrix_one_dominance = None
             bacc_majority_voting = bacc_one_dominance = 0.0
-            auc_v = auc_t = recall_v = specificity_v = recall_mj_v = specificity_mj_v = recall_1d_v = specificity_1d_v = 0.0
+            auc_v = c_index_val
+            auc_t = c_index_train
+            recall_v = specificity_v = recall_mj_v = specificity_mj_v = recall_1d_v = specificity_1d_v = 0.0
             optimal_threshold_v = 0.5
             y_true_wsi_level = probs_wsi_level = y_true_patient_level = patient_mv_scores = patient_1d_scores = []
         else:
