@@ -4465,8 +4465,9 @@ def train_accum_graddient_new_sigmoid_threshold(train_loader, val_loader, model,
             save_checkpoint(model, optimizer, epoch, val_acc, f'Checkpoints-univ2/Checkpoint_{dataset}_adj_{survival}',
                             filename=f'{all_t}_last_checkpoint_{survival}.pth.tar')
 
+        metric_name = "C-index" if task == 'risk' else "Bacc"
         # Print epoch summary
-        print(f'\n\nFOLD {fold + 1} repeat {repeat+1}- Epoch: {epoch:03d}, Train Loss: {train_loss:.6f}, Train Acc: {train_accuracy:.6f}, Train Bacc: {train_bacc:.6f} Train auc: {auc_t}, Val Loss: {avg_loss_val:.6f}, Val Acc: {val_acc:.6f}, Val Bacc: {val_bacc:.6f} Val auc: {auc_v}\n -------------------------------------------------------------------------\n')
+        print(f'\n\nFOLD {fold + 1} repeat {repeat+1}- Epoch: {epoch:03d}, Train Loss: {train_loss:.6f}, Train Acc: {train_accuracy:.6f}, Train {metric_name}: {train_bacc:.6f} Train auc: {auc_t}, Val Loss: {avg_loss_val:.6f}, Val Acc: {val_acc:.6f}, Val {metric_name}: {val_bacc:.6f} Val auc: {auc_v}\n -------------------------------------------------------------------------\n')
         print('Train classification report:')
         print(cm_t)
         print(score_matrix_t)
@@ -4564,14 +4565,14 @@ def train_accum_graddient_new_sigmoid_threshold(train_loader, val_loader, model,
                     best_patient_1d_scores = patient_1d_scores
 
                     torch.save(model.state_dict(), best_model_path)
-                    print(f'\nSaved the best model with Val bAcc: {val_bacc:.6f} at Epoch: {epoch:03d}\n')
+                    print(f'\nSaved the best model with Val {metric_name}: {val_bacc:.6f} at Epoch: {epoch:03d}\n')
                     early_stopping_counter = 0  # Reset early stopping counter if accuracy improves
                 else:
                     early_stopping_counter += 1  # Increment early stopping counter
             
             # Learning rate scheduling for 'bacc' tracking
             if lrrr == 'counter':
-                if epoch > 1 and val_bacc <= best_val_acc: # Only reduce LR if bacc is not improving
+                if epoch > 1 and val_bacc <= best_val_acc: # In risk mode val_bacc stores C-index
                     lr_scheduler_counter += 1
                     if lr_scheduler_counter >= lr_scheduler_patience:
                         lr_scheduler_counter = 0
@@ -4595,8 +4596,12 @@ def train_accum_graddient_new_sigmoid_threshold(train_loader, val_loader, model,
         writer.add_scalar('Loss/Train', train_loss, epoch)
         writer.add_scalar('Loss/Evaluation train', avg_loss_train, epoch)
         writer.add_scalar('Loss/Evaluation validation', avg_loss_val, epoch)
-        writer.add_scalar('Bacc/Evaluation validation', val_bacc, epoch)
-        writer.add_scalar('Bacc/Evaluation train', train_bacc, epoch)
+        if task == 'risk':
+            writer.add_scalar('CIndex/Evaluation validation', val_bacc, epoch)
+            writer.add_scalar('CIndex/Evaluation train', train_bacc, epoch)
+        else:
+            writer.add_scalar('Bacc/Evaluation validation', val_bacc, epoch)
+            writer.add_scalar('Bacc/Evaluation train', train_bacc, epoch)
         writer.add_scalar('AUC/Evaluation train', auc_t, epoch)
         writer.add_scalar('AUC/Evaluation validation', auc_v, epoch)
 
@@ -4616,7 +4621,7 @@ def train_accum_graddient_new_sigmoid_threshold(train_loader, val_loader, model,
     writer.add_scalar('Variables/LR-scheduler-factor', lr_scheduler_factor)
     for name, param in model.named_parameters():
         writer.add_histogram(name, param, epoch)
-    writer.add_scalar('Best_model/val_acc', best_val_acc) # Should reflect the best balanced accuracy achieved
+    writer.add_scalar('Best_model/val_acc', best_val_acc) # For risk mode this stores best C-index
     writer.close()
 
     return (best_val_acc,  # 0: This is now the best patient-level BAcc (or loss if tracking loss)
