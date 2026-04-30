@@ -1616,7 +1616,6 @@ def get_max_neighbors(data, edge_type=('tile', 'intra', 'tile')):
 
 
 def setup_data_loaders(all_t,train_df, val_df, test_df, mean_features, std_dev, batch_size, device,sampller,survival,node_batch_size,virtual_percent,individual,dataset, patch_selector=None, task='12months'):
-    label_col = 'vital_status_12' if task == '12months' else 'event'
 
                        
     # =========================
