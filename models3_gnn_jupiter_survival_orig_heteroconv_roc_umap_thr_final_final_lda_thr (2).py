@@ -1497,7 +1497,7 @@ def plot_attention_histograms(attentions, save_dir='attn_histograms', prefix='')
 
 
 
-def store_fold_data(fold_results, train_dataset, val_dataset, train_df, val_df):
+def store_fold_data(fold_results, train_dataset, val_dataset, train_df, val_df, task='12months'):
     """
     Store dataset sizes, patient IDs, and class distributions for each fold in fold_results.
 
@@ -1514,11 +1514,12 @@ def store_fold_data(fold_results, train_dataset, val_dataset, train_df, val_df):
     fold_results['train_patient_ids'].append(train_df['case_id'].unique())
     fold_results['val_patient_ids'].append(val_df['case_id'].unique())
 
+    label_col = 'vital_status_12' if task == '12months' else 'event'
     # Calculate and store class distributions for training and validation sets
-    train_0s = train_df[train_df['vital_status_12'] == 0].groupby('case_id').size()
-    train_1s = train_df[train_df['vital_status_12'] == 1].groupby('case_id').size()
-    val_0s = val_df[val_df['vital_status_12'] == 0].groupby('case_id').size()
-    val_1s = val_df[val_df['vital_status_12'] == 1].groupby('case_id').size()
+    train_0s = train_df[train_df[label_col] == 0].groupby('case_id').size()
+    train_1s = train_df[train_df[label_col] == 1].groupby('case_id').size()
+    val_0s = val_df[val_df[label_col] == 0].groupby('case_id').size()
+    val_1s = val_df[val_df[label_col] == 1].groupby('case_id').size()
 
     fold_results['train_0s_per_patient'].append(train_0s)
     fold_results['train_1s_per_patient'].append(train_1s)
@@ -1526,7 +1527,7 @@ def store_fold_data(fold_results, train_dataset, val_dataset, train_df, val_df):
     fold_results['val_1s_per_patient'].append(val_1s)
 
 
-def prepare_fold_data(df_train, df_val, df, df_test,all_t,unique_patients, train_index=None, val_index=None):
+def prepare_fold_data(df_train, df_val, df, df_test,all_t,unique_patients, train_index=None, val_index=None, task='12months'):
     """
     Prepare training and validation data based on the configuration of `all_t`.
 
@@ -1563,9 +1564,9 @@ def prepare_fold_data(df_train, df_val, df, df_test,all_t,unique_patients, train
         val_df = df[df['case_id'].isin(val_patients)]
         
         
-        train_df = train_df[['image_filename', 'vital_status_12','case_id']]
-    # Filter val_df to include only image_filename and labels
-        val_df = val_df[['image_filename', 'vital_status_12','case_id']]
+        label_cols = ['image_filename', 'case_id', 'vital_status_12'] if task == '12months' else ['image_filename', 'case_id', 'event', 'time']
+        train_df = train_df[label_cols]
+        val_df = val_df[label_cols]
 
         train_patients = len(train_patients)
         val_patients = len(val_patients)
@@ -1574,7 +1575,7 @@ def prepare_fold_data(df_train, df_val, df, df_test,all_t,unique_patients, train
         test_df =[]
         test_patients = []
         if 'tcga' in all_t:
-            test_df = df_test[['image_filename', 'vital_status_12','case_id']]
+            test_df = df_test[label_cols]
             test_patients = len(test_patients)
             
     else:
@@ -1614,7 +1615,8 @@ def get_max_neighbors(data, edge_type=('tile', 'intra', 'tile')):
 
 
 
-def setup_data_loaders(all_t,train_df, val_df, test_df, mean_features, std_dev, batch_size, device,sampller,survival,node_batch_size,virtual_percent,individual,dataset, patch_selector=None):
+def setup_data_loaders(all_t,train_df, val_df, test_df, mean_features, std_dev, batch_size, device,sampller,survival,node_batch_size,virtual_percent,individual,dataset, patch_selector=None, task='12months'):
+    label_col = 'vital_status_12' if task == '12months' else 'event'
 
                        
     # =========================
@@ -1625,11 +1627,11 @@ def setup_data_loaders(all_t,train_df, val_df, test_df, mean_features, std_dev, 
         root = f"{dataset}_univ2_patchgraphadj_selfloop"  # per-WSI graphs
     
         # one row per patient (label once), but keep full WSI rows to locate files
-        train_pat_df = train_df[['image_filename', 'vital_status_12', 'case_id']].drop_duplicates('case_id')
-        val_pat_df   = val_df  [['image_filename', 'vital_status_12', 'case_id']].drop_duplicates('case_id')
+        train_pat_df = train_df[['image_filename', label_col, 'case_id']].drop_duplicates('case_id')
+        val_pat_df   = val_df  [['image_filename', label_col, 'case_id']].drop_duplicates('case_id')
     
         test_present = isinstance(test_df, pd.DataFrame) and (not test_df.empty) and ('tcga' in all_t)
-        test_pat_df  = (test_df[['image_filename', 'vital_status_12', 'case_id']].drop_duplicates('case_id')
+        test_pat_df  = (test_df[['image_filename', label_col, 'case_id']].drop_duplicates('case_id')
                         if test_present else None)
     
         # datasets: normalization identical to your GraphDataset_featsnorml
@@ -1645,7 +1647,7 @@ def setup_data_loaders(all_t,train_df, val_df, test_df, mean_features, std_dev, 
     
         # Helper to fetch label list
         def _labels_from(df):
-            return df['vital_status_12'].astype(int).tolist() if (df is not None and not df.empty and 'vital_status_12' in df) else []
+            return df[label_col].astype(int).tolist() if (df is not None and not df.empty and label_col in df) else []
     
         # Prefer labels from the dataset (patient-level df); fallback to the patient DF you just built
         labels = _labels_from(getattr(train_dataset, 'df', None))
@@ -1719,25 +1721,25 @@ def setup_data_loaders(all_t,train_df, val_df, test_df, mean_features, std_dev, 
          if  'combined_' in all_t:
              if individual ==  'True':
                 print('\nNormalization of train')
-                train_dataset = GraphDataset_featsnorml_hetero(f"{dataset}_univ2_combinedknn_hetero_selfloop_names_individualTrue",train_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector)
+                train_dataset = GraphDataset_featsnorml_hetero(f"{dataset}_univ2_combinedknn_hetero_selfloop_names_individualTrue",train_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector, task=task)
                 print('len train:', len(train_dataset))
                 print('\nNormalization of val')
-                val_dataset = GraphDataset_featsnorml_hetero(f"{dataset}_univ2_combinedknn_hetero_selfloop_names_individualTrue",val_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector)
+                val_dataset = GraphDataset_featsnorml_hetero(f"{dataset}_univ2_combinedknn_hetero_selfloop_names_individualTrue",val_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector, task=task)
                 print('len val:', len(val_dataset))
                 test_dataset = []
              else:
                 print('\nNormalization of train')
-                train_dataset = GraphDataset_featsnorml_hetero(f"{dataset}_univ2_combinedknn_hetero_selfloop_names",train_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector)
+                train_dataset = GraphDataset_featsnorml_hetero(f"{dataset}_univ2_combinedknn_hetero_selfloop_names",train_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector, task=task)
                 print('len train:', len(train_dataset))
                 print('\nNormalization of val')
-                val_dataset = GraphDataset_featsnorml_hetero(f"{dataset}_univ2_combinedknn_hetero_selfloop_names",val_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector)
+                val_dataset = GraphDataset_featsnorml_hetero(f"{dataset}_univ2_combinedknn_hetero_selfloop_names",val_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector, task=task)
                 print('len val:', len(val_dataset))
                 test_dataset = []
             
          if 'tcga' in all_t:
             if 'combined_' in all_t:
                 print('\nNormalization of test knn')
-                test_dataset = GraphDataset_featsnorml_hetero(f"{dataset}_univ2_combinedknn_hetero_selfloop_names", test_df, device, mean_features, std_dev, virtual_percent, patch_selector=patch_selector)
+                test_dataset = GraphDataset_featsnorml_hetero(f"{dataset}_univ2_combinedknn_hetero_selfloop_names", test_df, device, mean_features, std_dev, virtual_percent, patch_selector=patch_selector, task=task)
             
             print('len test:', len(test_dataset))
     
@@ -1750,11 +1752,11 @@ def setup_data_loaders(all_t,train_df, val_df, test_df, mean_features, std_dev, 
         if individual == 'True':
             root += "_individualTrue"
     
-        train_dataset = GraphDataset_featsnorml_hyperinc(root, train_df, device, mean_features, std_dev, hyper_percent, patch_selector=patch_selector)
-        val_dataset   = GraphDataset_featsnorml_hyperinc(root, val_df,   device, mean_features, std_dev, hyper_percent, patch_selector=patch_selector)
+        train_dataset = GraphDataset_featsnorml_hyperinc(root, train_df, device, mean_features, std_dev, hyper_percent, patch_selector=patch_selector, task=task)
+        val_dataset   = GraphDataset_featsnorml_hyperinc(root, val_df,   device, mean_features, std_dev, hyper_percent, patch_selector=patch_selector, task=task)
     
         if 'tcga' in all_t:
-            test_dataset  = GraphDataset_featsnorml_hyperinc(root, test_df,  device, mean_features, std_dev, hyper_percent, patch_selector=patch_selector)
+            test_dataset  = GraphDataset_featsnorml_hyperinc(root, test_df,  device, mean_features, std_dev, hyper_percent, patch_selector=patch_selector, task=task)
         else:
             test_dataset = []
 
@@ -1763,33 +1765,33 @@ def setup_data_loaders(all_t,train_df, val_df, test_df, mean_features, std_dev, 
         if  'combined_' in all_t:
             if individual ==  'True':
                 print('\nNormalization of train')
-                train_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_combinedknn_homo_selfloop_names_individualTrue",train_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector)
+                train_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_combinedknn_homo_selfloop_names_individualTrue",train_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector, task=task)
                 print('len train:', len(train_dataset))
                 print('\nNormalization of val')
-                val_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_combinedknn_homo_selfloop_names_individualTrue",val_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector)
+                val_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_combinedknn_homo_selfloop_names_individualTrue",val_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector, task=task)
                 print('len val:', len(val_dataset))
                 test_dataset = []
             else:
                 print('\nNormalization of train')
-                train_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_combinedknn_selfloop_names",train_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector)
+                train_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_combinedknn_selfloop_names",train_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector, task=task)
                 print('len train:', len(train_dataset))
                 print('\nNormalization of val')
-                val_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_combinedknn_selfloop_names",val_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector)
+                val_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_combinedknn_selfloop_names",val_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector, task=task)
                 print('len val:', len(val_dataset))
                 test_dataset = []
         else:
-            train_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_patchgraphadj_selfloop", train_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector)
+            train_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_patchgraphadj_selfloop", train_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector, task=task)
             print('len train:', len(train_dataset))
-            val_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_patchgraphadj_selfloop", val_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector)
+            val_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_patchgraphadj_selfloop", val_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector, task=task)
             print('len val:', len(val_dataset))
             
         if 'tcga' in all_t:
             if 'combined_' in all_t:
                 print('\nNormalization of test knn')
-                test_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_combinedknn_selfloop_names", test_df, device, mean_features, std_dev, virtual_percent, patch_selector=patch_selector)
+                test_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_combinedknn_selfloop_names", test_df, device, mean_features, std_dev, virtual_percent, patch_selector=patch_selector, task=task)
             else:
                 print('\nNormalization of test all files')
-                test_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_patchgraphadj_selfloop", test_df, device, mean_features, std_dev, virtual_percent, patch_selector=patch_selector)
+                test_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_patchgraphadj_selfloop", test_df, device, mean_features, std_dev, virtual_percent, patch_selector=patch_selector, task=task)
             print('len test:', len(test_dataset))
     
         else:
@@ -1801,7 +1803,7 @@ def setup_data_loaders(all_t,train_df, val_df, test_df, mean_features, std_dev, 
     weight_neg = total_samples / train_dataset.n_neg  # Smaller weight for the majority class
 
     # Assign weights inversely proportional to class frequencies
-    sample_weights = [weight_pos if label == 0 else weight_neg for label in train_dataset.df['vital_status_12']]
+    sample_weights = [weight_pos if label == 0 else weight_neg for label in train_dataset.df[label_col]]
     sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
     
     generator = torch.Generator().manual_seed(47)
@@ -2191,7 +2193,7 @@ def apply_patch_selector_to_heterodata(data, filename, patch_selector, node_type
 # Graph Dataaset definition
 ######################################################    
 class GraphDataset_featsnorml(torch.utils.data.Dataset):
-    def __init__(self, root, df, device, mean_features=None, std_dev=None, virtual_percent=0, patch_selector=None):
+    def __init__(self, root, df, device, mean_features=None, std_dev=None, virtual_percent=0, patch_selector=None, task='12months'):
         self.root = root
         self.df = df
         self.device = device
@@ -2199,8 +2201,10 @@ class GraphDataset_featsnorml(torch.utils.data.Dataset):
         self.std_dev = std_dev.clone().detach().to(device) if std_dev is not None else None
         self.virtual_percent = virtual_percent  # 0 = original, 5/10/20 = virtual edge percent
         self.patch_selector = patch_selector
-        self.n_pos = (self.df['vital_status_12'] == 1).sum()
-        self.n_neg = (self.df['vital_status_12'] == 0).sum()
+        self.task = task
+        label_col = 'vital_status_12' if task == '12months' else 'event'
+        self.n_pos = (self.df[label_col] == 1).sum() if label_col in self.df else 0
+        self.n_neg = (self.df[label_col] == 0).sum() if label_col in self.df else 0
 
     def __len__(self):
         return len(self.df)
@@ -2208,8 +2212,11 @@ class GraphDataset_featsnorml(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         filename = self.df['image_filename'].iloc[idx]
         case_id = self.df['case_id'].iloc[idx]
-        label = self.df['vital_status_12'].iloc[idx]
-        label = torch.tensor(label, dtype=torch.long)
+        if self.task == '12months':
+            label = torch.tensor(self.df['vital_status_12'].iloc[idx], dtype=torch.long)
+        else:
+            label = torch.tensor(self.df['event'].iloc[idx], dtype=torch.float32)
+            time = torch.tensor(self.df['time'].iloc[idx], dtype=torch.float32)
 
         # Load graph data
         graph_path = os.path.join(self.root, filename[:-3] + '.pt')
@@ -2260,6 +2267,9 @@ class GraphDataset_featsnorml(torch.utils.data.Dataset):
             case_id=case_id,
             image_filename=filename
         )
+        if self.task == 'risk':
+            data.event = label
+            data.time = time
         data = apply_patch_selector_to_data(data, filename, self.patch_selector)
         return data
 
@@ -2267,7 +2277,7 @@ class GraphDataset_featsnorml(torch.utils.data.Dataset):
 from torch_geometric.data import HeteroData
 
 class GraphDataset_featsnorml_hetero(torch.utils.data.Dataset):
-    def __init__(self, root, df, device, mean_features=None, std_dev=None, virtual_percent=0, patch_selector=None):
+    def __init__(self, root, df, device, mean_features=None, std_dev=None, virtual_percent=0, patch_selector=None, task='12months'):
         self.root = root
         self.df = df
         self.device = device
@@ -2275,8 +2285,10 @@ class GraphDataset_featsnorml_hetero(torch.utils.data.Dataset):
         self.std_dev = std_dev.to(device) if std_dev is not None else None
         self.virtual_percent = virtual_percent
         self.patch_selector = patch_selector
-        self.n_pos = (self.df['vital_status_12'] == 1).sum()
-        self.n_neg = (self.df['vital_status_12'] == 0).sum()
+        self.task = task
+        label_col = 'vital_status_12' if task == '12months' else 'event'
+        self.n_pos = (self.df[label_col] == 1).sum() if label_col in self.df else 0
+        self.n_neg = (self.df[label_col] == 0).sum() if label_col in self.df else 0
 
     def __len__(self):
         return len(self.df)
@@ -2284,7 +2296,11 @@ class GraphDataset_featsnorml_hetero(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         filename = self.df['image_filename'].iloc[idx]
         case_id = self.df['case_id'].iloc[idx]
-        label = torch.tensor(self.df['vital_status_12'].iloc[idx], dtype=torch.long)
+        if self.task == '12months':
+            label = torch.tensor(self.df['vital_status_12'].iloc[idx], dtype=torch.long)
+        else:
+            label = torch.tensor(self.df['event'].iloc[idx], dtype=torch.float32)
+            time = torch.tensor(self.df['time'].iloc[idx], dtype=torch.float32)
 
         # Load HeteroData graph
         graph_path = os.path.join(self.root, filename[:-3] + '_hetero.pt')
@@ -2297,6 +2313,9 @@ class GraphDataset_featsnorml_hetero(torch.utils.data.Dataset):
             print("⚠️ Warning: No normalization applied to", filename)
 
         data.y = label
+        if self.task == 'risk':
+            data.event = label
+            data.time = time
         data.case_id = case_id
         data.image_filename = filename
 
@@ -2311,7 +2330,7 @@ class GraphDataset_featsnorml_hyperinc(torch.utils.data.Dataset):
     and keeps your familiar metadata fields.
     """
     def __init__(self, root, df, device, mean_features, std_dev,
-                 hyper_percent: int = 100, label_col: str = 'vital_status_12', patch_selector=None):
+                 hyper_percent: int = 100, label_col: str = 'vital_status_12', patch_selector=None, task='12months'):
         import os
         self.root = root
         self.df = df.reset_index(drop=True)
@@ -2319,7 +2338,8 @@ class GraphDataset_featsnorml_hyperinc(torch.utils.data.Dataset):
         self.mean = torch.tensor(mean_features, dtype=torch.float32)
         self.std = torch.tensor(std_dev, dtype=torch.float32)
         self.hyper_key = f"hyperedge_index_{int(hyper_percent)}"
-        self.label_col = label_col
+        self.task = task
+        self.label_col = 'vital_status_12' if task == '12months' else 'event'
         self.patch_selector = patch_selector
 
         self.n_pos = int((self.df[self.label_col] == 1).sum()) if self.label_col in self.df else 0
@@ -2337,6 +2357,9 @@ class GraphDataset_featsnorml_hyperinc(torch.utils.data.Dataset):
         # label as float [1]
         label_val = float(row[self.label_col]) if self.label_col in row else 0.0
         label = torch.tensor([label_val], dtype=torch.float32)
+        if self.task == 'risk':
+            time_val = float(row['time']) if 'time' in row else 0.0
+            time = torch.tensor([time_val], dtype=torch.float32)
 
         graph_path = os.path.join(self.root, f"{case_id}_combined_hyper.pt")
         G = torch.load(graph_path, map_location='cpu')
@@ -2382,6 +2405,9 @@ class GraphDataset_featsnorml_hyperinc(torch.utils.data.Dataset):
         )
         # attach hyper incidence too
         data.hyperedge_index = hyperedge_index
+        if self.task == 'risk':
+            data.event = label
+            data.time = time
 
         if hasattr(G, 'pos'):
             data.pos = G.pos
@@ -4141,6 +4167,72 @@ def save_checkpoint(model, optimizer, epoch, val_acc, path, filename):
     torch.save(state, filepath)
     print(f"Checkpoint saved to {filepath}")
 
+def cox_ph_loss(risk, time, event):
+    order = torch.argsort(time, descending=True)
+    risk = risk[order]
+    event = event[order]
+    log_cumsum = torch.logcumsumexp(risk, dim=0)
+    denom = event.sum().clamp_min(1.0)
+    return (-(risk - log_cumsum) * event).sum() / denom
+
+def concordance_index_torch(time, risk, event):
+    time = time.detach().view(-1).float().cpu()
+    risk = risk.detach().view(-1).float().cpu()
+    event = event.detach().view(-1).float().cpu()
+    n = len(time)
+    concordant = 0.0
+    ties = 0.0
+    comparable = 0.0
+    for i in range(n):
+        if event[i] <= 0:
+            continue
+        for j in range(n):
+            if time[i] < time[j]:
+                comparable += 1.0
+                if risk[i] > risk[j]:
+                    concordant += 1.0
+                elif risk[i] == risk[j]:
+                    ties += 1.0
+    if comparable == 0:
+        return 0.5
+    return float((concordant + 0.5 * ties) / comparable)
+
+def validate_risk(loader, model, device, survival, all_t):
+    model.eval()
+    all_time, all_event, all_risk = [], [], []
+    total_loss = 0.0
+    n_batches = 0
+    with torch.no_grad():
+        for data in loader:
+            data = data.to(device)
+            if isinstance(data, HeteroData):
+                if survival == 'gat':
+                    out, _ = model(data.x_dict, data.edge_index_dict, data['tile'].batch)
+                else:
+                    out = model(data.x_dict, data.edge_index_dict, data['tile'].batch)
+            elif 'hyper' in all_t:
+                out = model(data.x, data.edge_index, data.hyperedge_index, data.batch)
+            else:
+                if survival == 'gat' and 'hyper' not in all_t:
+                    out, _ = model(data.x, data.edge_index, data.batch)
+                else:
+                    out = model(data.x, data.edge_index, data.batch)
+            risk = out.view(-1)
+            time = data.time.view(-1).float()
+            event = data.event.view(-1).float()
+            total_loss += cox_ph_loss(risk, time, event).item()
+            n_batches += 1
+            all_time.append(time)
+            all_event.append(event)
+            all_risk.append(risk)
+    if n_batches == 0:
+        return 0.0, 0.5
+    times = torch.cat(all_time)
+    events = torch.cat(all_event)
+    risks = torch.cat(all_risk)
+    c_index = concordance_index_torch(times, risks, events)
+    return total_loss / n_batches, c_index
+
 
     
 def train_accum_graddient_new_sigmoid_threshold(train_loader, val_loader, model, criterion, optimizer, device, early_stopping_rounds,
@@ -4148,7 +4240,7 @@ def train_accum_graddient_new_sigmoid_threshold(train_loader, val_loader, model,
                                                 hidden_channels, lr, num_node_features, class_weights, best_val_acc, best_score_matrix_v, best_cm_v,
                                                 best_score_matrix_t, best_cm, fold, lrrr, grad_accum, load, survival,
                                                 all_t, actualtime, effective_batch, calculate_threshold, track, track_lr, repeat, num_neighbors,
-                                                node_batch_size, batch_sizee,dataset):
+                                                node_batch_size, batch_sizee,dataset, task='12months'):
     """
     Train the model with gradient accumulation and validation, implementing early stopping and learning rate scheduling.
 
@@ -4319,8 +4411,14 @@ def train_accum_graddient_new_sigmoid_threshold(train_loader, val_loader, model,
                             out = model(data.x, data.edge_index, data.batch)
   # Output logits of shape [batch_size, 1]
 
-                    # Calculate loss (criterion returns sum, so divide by effective_batch)
-                    loss = criterion(out, data.y) / effective_batch  # Scale the loss for gradient accumulation
+                    if task == 'risk':
+                        risk = out.view(-1)
+                        time = data.time.view(-1).float()
+                        event = data.event.view(-1).float()
+                        loss_raw = cox_ph_loss(risk, time, event)
+                    else:
+                        loss_raw = criterion(out, data.y)
+                    loss = loss_raw / effective_batch
                     loss.backward()
 
                     # Step optimizer if gradient accumulation steps are met
@@ -4329,7 +4427,7 @@ def train_accum_graddient_new_sigmoid_threshold(train_loader, val_loader, model,
                         optimizer.zero_grad()
 
                     # Accumulate raw (unscaled) loss for logging (criterion already summed)
-                    total_loss += criterion(out, data.y).item()
+                    total_loss += loss_raw.item()
                     num_samples += data.num_graphs # Assuming data.num_graphs is appropriate for batch size
 
                 # Update WSI progress
@@ -4339,12 +4437,26 @@ def train_accum_graddient_new_sigmoid_threshold(train_loader, val_loader, model,
         train_loss = total_loss / num_samples
 
         # Validation loop
-        mode = 'val'
-        avg_loss_val, val_acc, val_bacc, score_matrix_v, cm_v, majority_voting_predictions, bacc_majority_voting, class_report_majority_voting, conf_matrix_majority_voting, one_dominance_predictions, bacc_one_dominance, class_report_one_dominance, conf_matrix_one_dominance, auc_v, recall_v, specificity_v, recall_mj_v, specificity_mj_v, recall_1d_v, specificity_1d_v, optimal_threshold_v,y_true_wsi_level, probs_wsi_level,y_true_patient_level, patient_mv_scores, patient_1d_scores = validate_sigmoid_threshold(
-            val_loader, model, weight_tensor, device, mode, criterion, calculate_threshold,survival,all_t)
-        
-        mode = 'train'
-        avg_loss_train, train_accuracy, train_bacc, score_matrix_t, cm_t, _, _, _, _, _, _, _, _, auc_t, _, _, _, _, _, _, _, _, _,_,_,_ = validate_sigmoid_threshold(train_loader, model, weight_tensor, device, mode, criterion, calculate_threshold,survival,all_t)
+        if task == 'risk':
+            avg_loss_val, c_index_val = validate_risk(val_loader, model, device, survival, all_t)
+            avg_loss_train, c_index_train = validate_risk(train_loader, model, device, survival, all_t)
+            val_acc = val_bacc = c_index_val
+            train_accuracy = train_bacc = c_index_train
+            score_matrix_v = cm_v = score_matrix_t = cm_t = None
+            majority_voting_predictions = class_report_majority_voting = conf_matrix_majority_voting = None
+            one_dominance_predictions = class_report_one_dominance = conf_matrix_one_dominance = None
+            bacc_majority_voting = bacc_one_dominance = 0.0
+            auc_v = c_index_val
+            auc_t = c_index_train
+            recall_v = specificity_v = recall_mj_v = specificity_mj_v = recall_1d_v = specificity_1d_v = 0.0
+            optimal_threshold_v = 0.5
+            y_true_wsi_level = probs_wsi_level = y_true_patient_level = patient_mv_scores = patient_1d_scores = []
+        else:
+            mode = 'val'
+            avg_loss_val, val_acc, val_bacc, score_matrix_v, cm_v, majority_voting_predictions, bacc_majority_voting, class_report_majority_voting, conf_matrix_majority_voting, one_dominance_predictions, bacc_one_dominance, class_report_one_dominance, conf_matrix_one_dominance, auc_v, recall_v, specificity_v, recall_mj_v, specificity_mj_v, recall_1d_v, specificity_1d_v, optimal_threshold_v,y_true_wsi_level, probs_wsi_level,y_true_patient_level, patient_mv_scores, patient_1d_scores = validate_sigmoid_threshold(
+                val_loader, model, weight_tensor, device, mode, criterion, calculate_threshold,survival,all_t)
+            mode = 'train'
+            avg_loss_train, train_accuracy, train_bacc, score_matrix_t, cm_t, _, _, _, _, _, _, _, _, auc_t, _, _, _, _, _, _, _, _, _,_,_,_ = validate_sigmoid_threshold(train_loader, model, weight_tensor, device, mode, criterion, calculate_threshold,survival,all_t)
 
         if 'SAGE' in survival:
             # Save checkpoint at the end of each epoch
@@ -4355,8 +4467,9 @@ def train_accum_graddient_new_sigmoid_threshold(train_loader, val_loader, model,
             save_checkpoint(model, optimizer, epoch, val_acc, f'Checkpoints-univ2/Checkpoint_{dataset}_adj_{survival}',
                             filename=f'{all_t}_last_checkpoint_{survival}.pth.tar')
 
+        metric_name = "C-index" if task == 'risk' else "Bacc"
         # Print epoch summary
-        print(f'\n\nFOLD {fold + 1} repeat {repeat+1}- Epoch: {epoch:03d}, Train Loss: {train_loss:.6f}, Train Acc: {train_accuracy:.6f}, Train Bacc: {train_bacc:.6f} Train auc: {auc_t}, Val Loss: {avg_loss_val:.6f}, Val Acc: {val_acc:.6f}, Val Bacc: {val_bacc:.6f} Val auc: {auc_v}\n -------------------------------------------------------------------------\n')
+        print(f'\n\nFOLD {fold + 1} repeat {repeat+1}- Epoch: {epoch:03d}, Train Loss: {train_loss:.6f}, Train Acc: {train_accuracy:.6f}, Train {metric_name}: {train_bacc:.6f} Train auc: {auc_t}, Val Loss: {avg_loss_val:.6f}, Val Acc: {val_acc:.6f}, Val {metric_name}: {val_bacc:.6f} Val auc: {auc_v}\n -------------------------------------------------------------------------\n')
         print('Train classification report:')
         print(cm_t)
         print(score_matrix_t)
@@ -4454,14 +4567,14 @@ def train_accum_graddient_new_sigmoid_threshold(train_loader, val_loader, model,
                     best_patient_1d_scores = patient_1d_scores
 
                     torch.save(model.state_dict(), best_model_path)
-                    print(f'\nSaved the best model with Val bAcc: {val_bacc:.6f} at Epoch: {epoch:03d}\n')
+                    print(f'\nSaved the best model with Val {metric_name}: {val_bacc:.6f} at Epoch: {epoch:03d}\n')
                     early_stopping_counter = 0  # Reset early stopping counter if accuracy improves
                 else:
                     early_stopping_counter += 1  # Increment early stopping counter
             
             # Learning rate scheduling for 'bacc' tracking
             if lrrr == 'counter':
-                if epoch > 1 and val_bacc <= best_val_acc: # Only reduce LR if bacc is not improving
+                if epoch > 1 and val_bacc <= best_val_acc: # In risk mode val_bacc stores C-index
                     lr_scheduler_counter += 1
                     if lr_scheduler_counter >= lr_scheduler_patience:
                         lr_scheduler_counter = 0
@@ -4485,8 +4598,12 @@ def train_accum_graddient_new_sigmoid_threshold(train_loader, val_loader, model,
         writer.add_scalar('Loss/Train', train_loss, epoch)
         writer.add_scalar('Loss/Evaluation train', avg_loss_train, epoch)
         writer.add_scalar('Loss/Evaluation validation', avg_loss_val, epoch)
-        writer.add_scalar('Bacc/Evaluation validation', val_bacc, epoch)
-        writer.add_scalar('Bacc/Evaluation train', train_bacc, epoch)
+        if task == 'risk':
+            writer.add_scalar('CIndex/Evaluation validation', val_bacc, epoch)
+            writer.add_scalar('CIndex/Evaluation train', train_bacc, epoch)
+        else:
+            writer.add_scalar('Bacc/Evaluation validation', val_bacc, epoch)
+            writer.add_scalar('Bacc/Evaluation train', train_bacc, epoch)
         writer.add_scalar('AUC/Evaluation train', auc_t, epoch)
         writer.add_scalar('AUC/Evaluation validation', auc_v, epoch)
 
@@ -4506,7 +4623,7 @@ def train_accum_graddient_new_sigmoid_threshold(train_loader, val_loader, model,
     writer.add_scalar('Variables/LR-scheduler-factor', lr_scheduler_factor)
     for name, param in model.named_parameters():
         writer.add_histogram(name, param, epoch)
-    writer.add_scalar('Best_model/val_acc', best_val_acc) # Should reflect the best balanced accuracy achieved
+    writer.add_scalar('Best_model/val_acc', best_val_acc) # For risk mode this stores best C-index
     writer.close()
 
     return (best_val_acc,  # 0: This is now the best patient-level BAcc (or loss if tracking loss)

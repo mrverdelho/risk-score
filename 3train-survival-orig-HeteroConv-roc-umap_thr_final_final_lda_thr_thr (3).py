@@ -82,6 +82,7 @@ for runn in range(0,6):
     individual = 'False' # if true then wsi1-wsi2, etc... false wsi-others
     plot_weights='True'
     dataset= 'lung' #'cptac' "lung
+    task = '12months'  # '12months' (classification) or 'risk' (Cox PH survival)
                                                                                                 #CPTAC           #LUNG
     all_t= 'baseline_lda_all_files' #combined_5_all_files                                     #yes   yes         #YES
                            #combined_20_all_files                                                  #yes   yes         #YES
@@ -688,6 +689,15 @@ for runn in range(0,6):
         df = pd.concat([df_train, df_val], ignore_index=True)
         #num_folds = 0
 
+    if task == 'risk':
+        if 'demographic.days_to_death' not in df.columns:
+            raise ValueError("task='risk' requires column 'demographic.days_to_death' in the metadata CSV.")
+        df['event'] = df['demographic.days_to_death'].notna().astype(int)
+        t_censor = df['demographic.days_to_death'].max()
+        if pd.isna(t_censor):
+            raise ValueError("task='risk' could not compute censoring time: all demographic.days_to_death values are NaN.")
+        df['time'] = df['demographic.days_to_death'].fillna(t_censor).astype(float)
+
     # Initialize StratifiedKFold and dataset statistics
     skf = StratifiedKFold(n_splits=num_folds, shuffle=True, random_state=seed)
     #mean_features, std_dev = compute_mean_std(df_train, "/home/ritav/Graphs/cptac_233_adj_selfloop", device)
@@ -714,7 +724,7 @@ for runn in range(0,6):
     #print('\nunique patients',unique_patients)
     print('\ntotal unique_patients',len(unique_patients))
     # Get labels for each unique patient
-    labels = df.groupby('case_id')['vital_status_12'].first()
+    labels = df.groupby('case_id')['vital_status_12'].first() if task == '12months' else df.groupby('case_id')['event'].first()
 
     if 'all_files' not in all_t:
         num_folds = 0
@@ -737,7 +747,7 @@ for runn in range(0,6):
             for repeat in range(repeatt):
                 print(f"\nStarting Fold {fold + 1}, Repeat {repeat + 1}...")
 
-                train_df, val_df, test_df,num_folds,train_patients,val_patients, test_patients = prepare_fold_data(df_train,df_val,df, df_test,all_t,unique_patients, train_index, val_index)
+                train_df, val_df, test_df,num_folds,train_patients,val_patients, test_patients = prepare_fold_data(df_train,df_val,df, df_test,all_t,unique_patients, train_index, val_index, task=task)
 
                 default_cohort = dataset.lower()
                 train_df = _populate_cohort_column(train_df, default_cohort)
@@ -903,7 +913,7 @@ for runn in range(0,6):
 
                 if norm=='True':
                     # Data loaders
-                    train_loader, val_loader, test_loader, train_dataset, val_dataset, test_dataset,num_neighbors,node_batch_size, = setup_data_loaders(all_t,train_df, val_df, test_df, mean_features, std_dev, batch_sizee, device,sampller,survival,node_batch_size,virtual_percentage,individual,dataset, patch_selector=patch_selector)
+                    train_loader, val_loader, test_loader, train_dataset, val_dataset, test_dataset,num_neighbors,node_batch_size, = setup_data_loaders(all_t,train_df, val_df, test_df, mean_features, std_dev, batch_sizee, device,sampller,survival,node_batch_size,virtual_percentage,individual,dataset, patch_selector=patch_selector, task=task)
                     print(train_loader)
                     print(val_loader)
                     print(test_loader)
@@ -936,14 +946,15 @@ for runn in range(0,6):
 
                 ##################### Prints ###############################################################################################
                 # Calculate the number of 0s and 1s per patient in the training set
-                train_0s_per_patient = train_df[train_df['vital_status_12'] == 0].groupby('case_id').size()
-                train_1s_per_patient = train_df[train_df['vital_status_12'] == 1].groupby('case_id').size()
+                label_col = 'vital_status_12' if task == '12months' else 'event'
+                train_0s_per_patient = train_df[train_df[label_col] == 0].groupby('case_id').size()
+                train_1s_per_patient = train_df[train_df[label_col] == 1].groupby('case_id').size()
                 
                 print('\ntrain patients 0s',train_0s_per_patient)
                    
                 # Calculate the number of 0s and 1s per patient in the validation set
-                val_0s_per_patient = val_df[val_df['vital_status_12'] == 0].groupby('case_id').size()
-                val_1s_per_patient = val_df[val_df['vital_status_12'] == 1].groupby('case_id').size()
+                val_0s_per_patient = val_df[val_df[label_col] == 0].groupby('case_id').size()
+                val_1s_per_patient = val_df[val_df[label_col] == 1].groupby('case_id').size()
                 print('val patients 0s',val_0s_per_patient)
                 
                 print(f"\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< Fold {fold+1} >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>:")
@@ -1002,8 +1013,8 @@ for runn in range(0,6):
                 print('\n')
                 ############################################################################################################################
                     
-                train_class_dist = get_class_distribution(train_df)
-                val_class_dist = get_class_distribution(val_df)
+                train_class_dist = get_class_distribution(train_df, label_col=label_col)
+                val_class_dist = get_class_distribution(val_df, label_col=label_col)
                 print(f"Fold {fold + 1}: Train 0s per patient: {train_class_dist[0]}, Train 1s per patient: {train_class_dist[1]}")
                 print(f"Val 0s per patient: {val_class_dist[0]}, Val 1s per patient: {val_class_dist[1]}")
 
@@ -1066,12 +1077,12 @@ for runn in range(0,6):
 
                 total_samples_calc = train_dataset.n_pos + train_dataset.n_neg # 1972.0
                 weight_pos = torch.tensor(weight_pos).to(device)
-                criterion = torch.nn.BCEWithLogitsLoss(reduction='sum',pos_weight=weight_pos)
+                criterion = torch.nn.BCEWithLogitsLoss(reduction='sum',pos_weight=weight_pos) if task == '12months' else None
 
                 fold_result = train_accum_graddient_new_sigmoid_threshold(
                 train_loader, val_loader, model, criterion, optimizer, device, early_stopping_rounds,
                 lr_scheduler_patience, lr_scheduler_factor, writer, best_model_path, weight_tensor,num_epochs, hidden_channels,lr,num_node_features,class_weights, best_val_acc,best_score_matrix_v,best_cm_v,best_score_matrix_t, best_cm,fold,
-                lrrr, effective_batch // batch_sizee, load, survival, all_t, actualtime, effective_batch,calculate_threshold,track,track_lr ,repeat,num_neighbors,node_batch_size,batch_sizee,dataset
+                lrrr, effective_batch // batch_sizee, load, survival, all_t, actualtime, effective_batch,calculate_threshold,track,track_lr ,repeat,num_neighbors,node_batch_size,batch_sizee,dataset, task=task
             )
 
 
