@@ -1497,7 +1497,7 @@ def plot_attention_histograms(attentions, save_dir='attn_histograms', prefix='')
 
 
 
-def store_fold_data(fold_results, train_dataset, val_dataset, train_df, val_df):
+def store_fold_data(fold_results, train_dataset, val_dataset, train_df, val_df, task='12months'):
     """
     Store dataset sizes, patient IDs, and class distributions for each fold in fold_results.
 
@@ -1514,11 +1514,12 @@ def store_fold_data(fold_results, train_dataset, val_dataset, train_df, val_df):
     fold_results['train_patient_ids'].append(train_df['case_id'].unique())
     fold_results['val_patient_ids'].append(val_df['case_id'].unique())
 
+    label_col = 'vital_status_12' if task == '12months' else 'event'
     # Calculate and store class distributions for training and validation sets
-    train_0s = train_df[train_df['vital_status_12'] == 0].groupby('case_id').size()
-    train_1s = train_df[train_df['vital_status_12'] == 1].groupby('case_id').size()
-    val_0s = val_df[val_df['vital_status_12'] == 0].groupby('case_id').size()
-    val_1s = val_df[val_df['vital_status_12'] == 1].groupby('case_id').size()
+    train_0s = train_df[train_df[label_col] == 0].groupby('case_id').size()
+    train_1s = train_df[train_df[label_col] == 1].groupby('case_id').size()
+    val_0s = val_df[val_df[label_col] == 0].groupby('case_id').size()
+    val_1s = val_df[val_df[label_col] == 1].groupby('case_id').size()
 
     fold_results['train_0s_per_patient'].append(train_0s)
     fold_results['train_1s_per_patient'].append(train_1s)
@@ -1526,7 +1527,7 @@ def store_fold_data(fold_results, train_dataset, val_dataset, train_df, val_df):
     fold_results['val_1s_per_patient'].append(val_1s)
 
 
-def prepare_fold_data(df_train, df_val, df, df_test,all_t,unique_patients, train_index=None, val_index=None):
+def prepare_fold_data(df_train, df_val, df, df_test,all_t,unique_patients, train_index=None, val_index=None, task='12months'):
     """
     Prepare training and validation data based on the configuration of `all_t`.
 
@@ -1563,9 +1564,9 @@ def prepare_fold_data(df_train, df_val, df, df_test,all_t,unique_patients, train
         val_df = df[df['case_id'].isin(val_patients)]
         
         
-        train_df = train_df[['image_filename', 'vital_status_12','case_id']]
-    # Filter val_df to include only image_filename and labels
-        val_df = val_df[['image_filename', 'vital_status_12','case_id']]
+        label_cols = ['image_filename', 'case_id', 'vital_status_12'] if task == '12months' else ['image_filename', 'case_id', 'event', 'time']
+        train_df = train_df[label_cols]
+        val_df = val_df[label_cols]
 
         train_patients = len(train_patients)
         val_patients = len(val_patients)
@@ -1574,7 +1575,7 @@ def prepare_fold_data(df_train, df_val, df, df_test,all_t,unique_patients, train
         test_df =[]
         test_patients = []
         if 'tcga' in all_t:
-            test_df = df_test[['image_filename', 'vital_status_12','case_id']]
+            test_df = df_test[label_cols]
             test_patients = len(test_patients)
             
     else:
@@ -1625,11 +1626,11 @@ def setup_data_loaders(all_t,train_df, val_df, test_df, mean_features, std_dev, 
         root = f"{dataset}_univ2_patchgraphadj_selfloop"  # per-WSI graphs
     
         # one row per patient (label once), but keep full WSI rows to locate files
-        train_pat_df = train_df[['image_filename', 'vital_status_12', 'case_id']].drop_duplicates('case_id')
-        val_pat_df   = val_df  [['image_filename', 'vital_status_12', 'case_id']].drop_duplicates('case_id')
+        train_pat_df = train_df[['image_filename', label_col, 'case_id']].drop_duplicates('case_id')
+        val_pat_df   = val_df  [['image_filename', label_col, 'case_id']].drop_duplicates('case_id')
     
         test_present = isinstance(test_df, pd.DataFrame) and (not test_df.empty) and ('tcga' in all_t)
-        test_pat_df  = (test_df[['image_filename', 'vital_status_12', 'case_id']].drop_duplicates('case_id')
+        test_pat_df  = (test_df[['image_filename', label_col, 'case_id']].drop_duplicates('case_id')
                         if test_present else None)
     
         # datasets: normalization identical to your GraphDataset_featsnorml
@@ -1645,7 +1646,7 @@ def setup_data_loaders(all_t,train_df, val_df, test_df, mean_features, std_dev, 
     
         # Helper to fetch label list
         def _labels_from(df):
-            return df['vital_status_12'].astype(int).tolist() if (df is not None and not df.empty and 'vital_status_12' in df) else []
+            return df[label_col].astype(int).tolist() if (df is not None and not df.empty and label_col in df) else []
     
         # Prefer labels from the dataset (patient-level df); fallback to the patient DF you just built
         labels = _labels_from(getattr(train_dataset, 'df', None))
@@ -1763,33 +1764,33 @@ def setup_data_loaders(all_t,train_df, val_df, test_df, mean_features, std_dev, 
         if  'combined_' in all_t:
             if individual ==  'True':
                 print('\nNormalization of train')
-                train_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_combinedknn_homo_selfloop_names_individualTrue",train_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector)
+                train_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_combinedknn_homo_selfloop_names_individualTrue",train_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector, task=task)
                 print('len train:', len(train_dataset))
                 print('\nNormalization of val')
-                val_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_combinedknn_homo_selfloop_names_individualTrue",val_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector)
+                val_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_combinedknn_homo_selfloop_names_individualTrue",val_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector, task=task)
                 print('len val:', len(val_dataset))
                 test_dataset = []
             else:
                 print('\nNormalization of train')
-                train_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_combinedknn_selfloop_names",train_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector)
+                train_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_combinedknn_selfloop_names",train_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector, task=task)
                 print('len train:', len(train_dataset))
                 print('\nNormalization of val')
-                val_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_combinedknn_selfloop_names",val_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector)
+                val_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_combinedknn_selfloop_names",val_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector, task=task)
                 print('len val:', len(val_dataset))
                 test_dataset = []
         else:
-            train_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_patchgraphadj_selfloop", train_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector)
+            train_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_patchgraphadj_selfloop", train_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector, task=task)
             print('len train:', len(train_dataset))
-            val_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_patchgraphadj_selfloop", val_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector)
+            val_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_patchgraphadj_selfloop", val_df, device,mean_features, std_dev,virtual_percent, patch_selector=patch_selector, task=task)
             print('len val:', len(val_dataset))
             
         if 'tcga' in all_t:
             if 'combined_' in all_t:
                 print('\nNormalization of test knn')
-                test_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_combinedknn_selfloop_names", test_df, device, mean_features, std_dev, virtual_percent, patch_selector=patch_selector)
+                test_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_combinedknn_selfloop_names", test_df, device, mean_features, std_dev, virtual_percent, patch_selector=patch_selector, task=task)
             else:
                 print('\nNormalization of test all files')
-                test_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_patchgraphadj_selfloop", test_df, device, mean_features, std_dev, virtual_percent, patch_selector=patch_selector)
+                test_dataset = GraphDataset_featsnorml(f"{dataset}_univ2_patchgraphadj_selfloop", test_df, device, mean_features, std_dev, virtual_percent, patch_selector=patch_selector, task=task)
             print('len test:', len(test_dataset))
     
         else:
@@ -1801,7 +1802,7 @@ def setup_data_loaders(all_t,train_df, val_df, test_df, mean_features, std_dev, 
     weight_neg = total_samples / train_dataset.n_neg  # Smaller weight for the majority class
 
     # Assign weights inversely proportional to class frequencies
-    sample_weights = [weight_pos if label == 0 else weight_neg for label in train_dataset.df['vital_status_12']]
+    sample_weights = [weight_pos if label == 0 else weight_neg for label in train_dataset.df[label_col]]
     sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
     
     generator = torch.Generator().manual_seed(47)

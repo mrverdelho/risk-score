@@ -747,7 +747,7 @@ for runn in range(0,6):
             for repeat in range(repeatt):
                 print(f"\nStarting Fold {fold + 1}, Repeat {repeat + 1}...")
 
-                train_df, val_df, test_df,num_folds,train_patients,val_patients, test_patients = prepare_fold_data(df_train,df_val,df, df_test,all_t,unique_patients, train_index, val_index)
+                train_df, val_df, test_df,num_folds,train_patients,val_patients, test_patients = prepare_fold_data(df_train,df_val,df, df_test,all_t,unique_patients, train_index, val_index, task=task)
 
                 default_cohort = dataset.lower()
                 train_df = _populate_cohort_column(train_df, default_cohort)
@@ -946,14 +946,15 @@ for runn in range(0,6):
 
                 ##################### Prints ###############################################################################################
                 # Calculate the number of 0s and 1s per patient in the training set
-                train_0s_per_patient = train_df[train_df['vital_status_12'] == 0].groupby('case_id').size()
-                train_1s_per_patient = train_df[train_df['vital_status_12'] == 1].groupby('case_id').size()
+                label_col = 'vital_status_12' if task == '12months' else 'event'
+                train_0s_per_patient = train_df[train_df[label_col] == 0].groupby('case_id').size()
+                train_1s_per_patient = train_df[train_df[label_col] == 1].groupby('case_id').size()
                 
                 print('\ntrain patients 0s',train_0s_per_patient)
                    
                 # Calculate the number of 0s and 1s per patient in the validation set
-                val_0s_per_patient = val_df[val_df['vital_status_12'] == 0].groupby('case_id').size()
-                val_1s_per_patient = val_df[val_df['vital_status_12'] == 1].groupby('case_id').size()
+                val_0s_per_patient = val_df[val_df[label_col] == 0].groupby('case_id').size()
+                val_1s_per_patient = val_df[val_df[label_col] == 1].groupby('case_id').size()
                 print('val patients 0s',val_0s_per_patient)
                 
                 print(f"\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< Fold {fold+1} >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>:")
@@ -1012,8 +1013,8 @@ for runn in range(0,6):
                 print('\n')
                 ############################################################################################################################
                     
-                train_class_dist = get_class_distribution(train_df)
-                val_class_dist = get_class_distribution(val_df)
+                train_class_dist = get_class_distribution(train_df, label_col=label_col)
+                val_class_dist = get_class_distribution(val_df, label_col=label_col)
                 print(f"Fold {fold + 1}: Train 0s per patient: {train_class_dist[0]}, Train 1s per patient: {train_class_dist[1]}")
                 print(f"Val 0s per patient: {val_class_dist[0]}, Val 1s per patient: {val_class_dist[1]}")
 
