@@ -1527,7 +1527,7 @@ def store_fold_data(fold_results, train_dataset, val_dataset, train_df, val_df, 
     fold_results['val_1s_per_patient'].append(val_1s)
 
 
-def prepare_fold_data(df_train, df_val, df, df_test,all_t,unique_patients, train_index=None, val_index=None, task='12months'):
+def prepare_fold_data(df_train, df_val, df, df_test,all_t,unique_patients, task, train_index=None, val_index=None):
     """
     Prepare training and validation data based on the configuration of `all_t`.
 
