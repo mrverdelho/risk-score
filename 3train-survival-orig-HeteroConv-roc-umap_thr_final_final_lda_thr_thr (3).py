@@ -22,7 +22,7 @@ from sklearn.metrics import silhouette_score
 from sklearn.neighbors import KernelDensity
 
 try:
-    from models3_gnn_jupiter_survival_orig_heteroconv_roc_umap_thr_final_final_lda_thr import GraphDataset_featsnorml_hetero, compute_mean_std_hetero, test_model_on_loader,verify_post_normalization, reset_weights, model_init, HeteroGAT_survival,GraphDataset_featsnorml,plot_attention_histograms,compute_mean_std,initialize_fold_results, initialize_repeat_results,store_fold_data, GAT_survival,prepare_fold_data,setup_data_loaders,get_class_distribution, train_accum_graddient_new_sigmoid_threshold,test_model_on_loader,verify_post_normalization,  GraphDataset_featsnorml_hyperinc, compute_mean_std_hyperinc, HyperGCN_survival, HyperGAT_survival, PatientWSIPackDataset_featsnorml, AgglomerativeGCN_Survival, AgglomerativeGAT_Survival,plot_roc_three_panels,  collect_activations_for_umap, plot_umap_per_layer_dual_and_metrics,save_layer_acts_for_fold, aggregate_umap_across_folds, build_renyi_patch_selector as _build_renyi_patch_selector_impl, summarize_patch_selector_usage, run_baseline_lda
+    from models3_complete_cindex_new import GraphDataset_featsnorml_hetero, compute_mean_std_hetero, test_model_on_loader,verify_post_normalization, reset_weights, model_init, HeteroGAT_survival,GraphDataset_featsnorml,plot_attention_histograms,compute_mean_std,initialize_fold_results, initialize_repeat_results,store_fold_data, GAT_survival,prepare_fold_data,setup_data_loaders,get_class_distribution, train_accum_graddient_new_sigmoid_threshold,test_model_on_loader,verify_post_normalization,  GraphDataset_featsnorml_hyperinc, compute_mean_std_hyperinc, HyperGCN_survival, HyperGAT_survival, PatientWSIPackDataset_featsnorml, AgglomerativeGCN_Survival, AgglomerativeGAT_Survival,plot_roc_three_panels,  collect_activations_for_umap, plot_umap_per_layer_dual_and_metrics,save_layer_acts_for_fold, aggregate_umap_across_folds, build_renyi_patch_selector as _build_renyi_patch_selector_impl, summarize_patch_selector_usage, run_baseline_lda
 except ImportError:
     from models3_gnn_jupiter_survival_orig_heteroconv_roc_umap_thr_final_final_lda import GraphDataset_featsnorml_hetero, compute_mean_std_hetero, test_model_on_loader,verify_post_normalization, reset_weights, model_init, HeteroGAT_survival,GraphDataset_featsnorml,plot_attention_histograms,compute_mean_std,initialize_fold_results, initialize_repeat_results,store_fold_data, GAT_survival,prepare_fold_data,setup_data_loaders,get_class_distribution, train_accum_graddient_new_sigmoid_threshold,test_model_on_loader,verify_post_normalization,  GraphDataset_featsnorml_hyperinc, compute_mean_std_hyperinc, HyperGCN_survival, HyperGAT_survival, PatientWSIPackDataset_featsnorml, AgglomerativeGCN_Survival, AgglomerativeGAT_Survival,plot_roc_three_panels,  collect_activations_for_umap, plot_umap_per_layer_dual_and_metrics,save_layer_acts_for_fold, aggregate_umap_across_folds, build_renyi_patch_selector as _build_renyi_patch_selector_impl, summarize_patch_selector_usage, run_baseline_lda
 
@@ -62,7 +62,7 @@ torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
 # Device selection
-device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print('\nUsing device:', device)
 auxxx = ['gcn']#,'survival''gat' ]#,'GraphSAGE_max']#, 'AdaptiveGraphSAGE','AdaptiveGraphSAGE_max'] #'survival','gat','gat','gat','GraphSAGE', 'AdaptiveGraphSAGE', 'GraphSAGE',
 #'AdaptiveGraphSAGE'
@@ -82,9 +82,9 @@ for runn in range(0,6):
     individual = 'False' # if true then wsi1-wsi2, etc... false wsi-others
     plot_weights='True'
     dataset= 'lung' #'cptac' "lung
-    task = '12months'  # '12months' (classification) or 'risk' (Cox PH survival)
+    task = 'risk'  # '12months' (classification) or 'risk' (Cox PH survival)
                                                                                                 #CPTAC           #LUNG
-    all_t= 'baseline_lda_all_files' #combined_5_all_files                                     #yes   yes         #YES
+    all_t= 'combined_20_all_files' #combined_5_all_files                                     #yes   yes         #YES
                            #combined_20_all_files                                                  #yes   yes         #YES
                            #combined_10_all_files - combined 1 grpah per patien                    #yes  yes          #YES
                            #combined_100_all_files                                                 #yes 
@@ -560,80 +560,81 @@ for runn in range(0,6):
         }
     elif dataset =='lung':
            csv_paths = {
-        
+            # csvs/updated_allpatients_combined_allpatients_data_knn_lung.csv
             'combined_10_all_files': {
-                'all': 'csvs/updated_allpatients_combined_allpatients_data_knn_lung.csv'                       
+                'all': 'csvs/up_lung_cptac_tcga_merged_cox_vital12_knn.csv'                       
             },
             
             'combined_20_all_files': {
-                'all': 'csvs/updated_allpatients_combined_allpatients_data_knn_lung.csv'                       
+                'all': 'csvs/up_lung_cptac_tcga_merged_cox_vital12_knn.csv'                       
             },
             
             'combined_5_all_files': {
-                'all': 'csvs/updated_allpatients_combined_allpatients_data_knn_lung.csv'                       
+                'all': 'csvs/up_lung_cptac_tcga_merged_cox_vital12_knn.csv'                       
             },
     
             'combined_100_all_files': {
-                'all': 'csvs/updated_allpatients_combined_allpatients_data_knn_lung.csv'                       
+                'all': 'csvs/up_lung_cptac_tcga_merged_cox_vital12_knn.csv'                       
             },
     
              'hetero_combined_5_all_files':{
-                 'all': 'csvs/updated_allpatients_combined_allpatients_data_knn_lung.csv'   
+                 'all': 'csvs/up_lung_cptac_tcga_merged_cox_vital12_knn.csv'   
             },
             
              'hetero_combined_10_all_files':{
-                 'all': 'csvs/updated_allpatients_combined_allpatients_data_knn_lung.csv'   
+                 'all': 'csvs/up_lung_cptac_tcga_merged_cox_vital12_knn.csv'   
             },
              
             'hetero_combined_20_all_files':{
-                 'all': 'csvs/updated_allpatients_combined_allpatients_data_knn_lung.csv'   
+                 'all': 'csvs/up_lung_cptac_tcga_merged_cox_vital12_knn.csv'   
             },
             'hetero_combined_100_all_files':{
-                 'all': 'csvs/updated_allpatients_combined_allpatients_data_knn_lung.csv'   
+                 'all': 'csvs/up_lung_cptac_tcga_merged_cox_vital12_knn.csv'   
             },
 
             'hyper_combined_5_all_files':{
-                 'all': 'csvs/updated_allpatients_combined_allpatients_data_knn_lung.csv'   
+                 'all': 'csvs/up_lung_cptac_tcga_merged_cox_vital12_knn.csv'   
             },
             
              'hyper_combined_10_all_files':{
-                 'all': 'csvs/updated_allpatients_combined_allpatients_data_knn_lung.csv'   
+                 'all': 'csvs/up_lung_cptac_tcga_merged_cox_vital12_knn.csv'   
             },
              
             'hyper_combined_20_all_files':{
-                 'all': 'csvs/updated_allpatients_combined_allpatients_data_knn_lung.csv'   
+                 'all': 'csvs/up_lung_cptac_tcga_merged_cox_vital12_knn.csv'   
             },
             'hyper_combined_100_all_files':{
-                 'all': 'csvs/updated_allpatients_combined_allpatients_data_knn_lung.csv'   
+                 'all': 'csvs/up_lung_cptac_tcga_merged_cox_vital12_knn.csv'   
             },
-               
+
+            #csvs/updated_all_filesencoded_three_updated_with_filenames_lung_FULL.csv
             'all_files': {
-                'all': 'csvs/updated_all_filesencoded_three_updated_with_filenames_lung_FULL.csv',
+                'all': 'csvs/up_lung_cptac_tcga_merged_cox_vital12.csv',
             },
                
             'aglomerative_mean_all_files': {
-                'all': 'csvs/updated_all_filesencoded_three_updated_with_filenames_lung_FULL.csv',
+                'all': 'csvs/up_lung_cptac_tcga_merged_cox_vital12.csv',
             },
             'aglomerative_max_all_files': {
-                'all': 'csvs/updated_all_filesencoded_three_updated_with_filenames_lung_FULL.csv',
+                'all': 'csvs/up_lung_cptac_tcga_merged_cox_vital12.csv',
             },
             'baseline_aglomerative_mean_all_files':{
-                'all': 'csvs/updated_all_filesencoded_three_updated_with_filenames_lung_FULL.csv',
+                'all': 'csvs/up_lung_cptac_tcga_merged_cox_vital12.csv',
             },
             'baseline_aglomerative_max_all_files':{
-                'all': 'csvs/updated_all_filesencoded_three_updated_with_filenames_lung_FULL.csv',
+                'all': 'csvs/up_lung_cptac_tcga_merged_cox_vital12.csv',
             },      
             'baseline_lda_all_files': {
-                'all': 'csvs/updated_all_filesencoded_three_updated_with_filenames_lung_FULL.csv',
+                'all': 'csvs/up_lung_cptac_tcga_merged_cox_vital12.csv',
             },
             'baseline_lda_all_files_renyi25': {
-                'all': 'csvs/updated_all_filesencoded_three_updated_with_filenames_lung_FULL.csv',
+                'all': 'csvs/up_lung_cptac_tcga_merged_cox_vital12.csv',
             },
             'baseline_lda_all_files_renyi50': {
-                'all': 'csvs/updated_all_filesencoded_three_updated_with_filenames_lung_FULL.csv',
+                'all': 'csvs/up_lung_cptac_tcga_merged_cox_vital12.csv',
             },
             'baseline_lda_all_files_renyi75': {
-                'all': 'csvs/updated_all_filesencoded_three_updated_with_filenames_lung_FULL.csv',
+                'all': 'csvs/up_lung_cptac_tcga_merged_cox_vital12.csv',
             },
                 
          }
@@ -690,13 +691,13 @@ for runn in range(0,6):
         #num_folds = 0
 
     if task == 'risk':
-        if 'demographic.days_to_death' not in df.columns:
-            raise ValueError("task='risk' requires column 'demographic.days_to_death' in the metadata CSV.")
-        df['event'] = df['demographic.days_to_death'].notna().astype(int)
-        t_censor = df['demographic.days_to_death'].max()
+        if 'days_to_death' not in df.columns:
+            raise ValueError("task='risk' requires column 'days_to_death' in the metadata CSV.")
+        df['event'] = df['days_to_death'].notna().astype(int)
+        t_censor = df['days_to_death'].max()
         if pd.isna(t_censor):
-            raise ValueError("task='risk' could not compute censoring time: all demographic.days_to_death values are NaN.")
-        df['time'] = df['demographic.days_to_death'].fillna(t_censor).astype(float)
+            raise ValueError("task='risk' could not compute censoring time: all days_to_death values are NaN.")
+        df['time'] = df['days_to_death'].fillna(t_censor).astype(float)
 
     # Initialize StratifiedKFold and dataset statistics
     skf = StratifiedKFold(n_splits=num_folds, shuffle=True, random_state=seed)
@@ -704,7 +705,6 @@ for runn in range(0,6):
 
 
     # Initialize fold results and CSV paths
-    repeat_results = initialize_repeat_results(num_folds=num_folds)
     fold_results = initialize_fold_results(num_folds=num_folds)
 
 
@@ -747,7 +747,7 @@ for runn in range(0,6):
             for repeat in range(repeatt):
                 print(f"\nStarting Fold {fold + 1}, Repeat {repeat + 1}...")
 
-                train_df, val_df, test_df,num_folds,train_patients,val_patients, test_patients = prepare_fold_data(df_train,df_val,df, df_test,all_t,unique_patients, train_index, val_index, task=task)
+                train_df, val_df, test_df,num_folds,train_patients,val_patients, test_patients = prepare_fold_data(df_train,df_val,df, df_test,all_t,unique_patients, task,train_index, val_index)
 
                 default_cohort = dataset.lower()
                 train_df = _populate_cohort_column(train_df, default_cohort)
